@@ -1,0 +1,80 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
+
+# 1. Veri Setinin Yüklenmesi
+df = pd.read_csv('Raisin_Dataset.csv')
+
+# 2. Ön İşleme (Preprocessing)
+# Sınıf etiketlerini sayısal değerlere dönüştürme (Kecimen/Besni -> 0/1)
+le = LabelEncoder()
+df['Class'] = le.fit_transform(df['Class'])
+
+X = df.drop('Class', axis=1)
+y = df['Class']
+
+# Veriyi Eğitim ve Test olarak ayırma (%30 Test)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+# Özellik Ölçeklendirme (Modellerin daha iyi çalışması için)
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# 3. Modellerin Kurulması ve Eğitilmesi
+lr_model = LogisticRegression()
+rf_model = RandomForestClassifier(random_state=42)
+
+lr_model.fit(X_train_scaled, y_train)
+rf_model.fit(X_train_scaled, y_train)
+
+# Tahmin olasılıklarını alma (Pozitif sınıf için)
+y_prob_lr = lr_model.predict_proba(X_test_scaled)[:, 1]
+y_prob_rf = rf_model.predict_proba(X_test_scaled)[:, 1]
+
+# --- SORU 7: ROC Eğrisi ve AUC ---
+fpr_lr, tpr_lr, _ = roc_curve(y_test, y_prob_lr)
+auc_lr = auc(fpr_lr, tpr_lr)
+
+fpr_rf, tpr_rf, _ = roc_curve(y_test, y_prob_rf)
+auc_rf = auc(fpr_rf, tpr_rf)
+
+plt.figure(figsize=(10, 6))
+plt.plot(fpr_lr, tpr_lr, label=f'Logistic Regression (AUC = {auc_lr:.4f})')
+plt.plot(fpr_rf, tpr_rf, label=f'Random Forest (AUC = {auc_rf:.4f})')
+plt.plot([0, 1], [0, 1], 'k--', label='Rastgele Tahmin')
+plt.xlabel('False Positive Rate (FPR)')
+plt.ylabel('True Positive Rate (TPR)')
+plt.title('ROC Eğrisi - Veri Seti C (Raisin)')
+plt.legend(loc='lower right')
+plt.grid(alpha=0.3)
+plt.savefig('roc_curves.png')
+plt.show()
+
+# --- SORU 8: Precision-Recall (PR) Eğrisi ---
+precision_lr, recall_lr, _ = precision_recall_curve(y_test, y_prob_lr)
+ap_lr = average_precision_score(y_test, y_prob_lr)
+
+precision_rf, recall_rf, _ = precision_recall_curve(y_test, y_prob_rf)
+ap_rf = average_precision_score(y_test, y_prob_rf)
+
+plt.figure(figsize=(10, 6))
+plt.plot(recall_lr, precision_lr, label=f'Logistic Regression (AP = {ap_lr:.4f})')
+plt.plot(recall_rf, precision_rf, label=f'Random Forest (AP = {ap_rf:.4f})')
+plt.xlabel('Recall (Geri Çağırma)')
+plt.ylabel('Precision (Kesinlik)')
+plt.title('Precision-Recall Eğrisi - Veri Seti C (Raisin)')
+plt.legend(loc='lower left')
+plt.grid(alpha=0.3)
+plt.savefig('pr_curves.png')
+plt.show()
+
+# Sonuçları Yazdırma
+print(f"Logistic Regression AUC: {auc_lr:.4f}")
+print(f"Random Forest AUC: {auc_rf:.4f}")
+print(f"Logistic Regression AP (Ortalama Hassasiyet): {ap_lr:.4f}")
+print(f"Random Forest AP (Ortalama Hassasiyet): {ap_rf:.4f}")

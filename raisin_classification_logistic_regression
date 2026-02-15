@@ -1,0 +1,140 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
+
+# 1. VERİ YÜKLEME VE ÖN İŞLEME
+# Not: Raisin_Dataset.csv dosyasının kodla aynı klasörde olduğundan emin olun.
+try:
+    df = pd.read_csv('Raisin_Dataset.csv')
+    print("Veri seti başarıyla yüklendi.")
+except FileNotFoundError:
+    print("Hata: 'Raisin_Dataset.csv' dosyası bulunamadı!")
+    exit()
+
+X = df.drop('Class', axis=1)
+y = df['Class']
+
+# Sınıfları sayısal değerlere dönüştürme (Besni: 0, Kecimen: 1)
+le = LabelEncoder()
+y_encoded = le.fit_transform(y)
+
+# Veriyi Eğitim ve Test setlerine ayırma (%80 Eğitim, %20 Test)
+X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.2, random_state=42)
+
+# Özellikleri Ölçeklendirme (Lojistik Regresyon ve KNN için önemlidir)
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# --- SORU 2: MANUEL CONFUSION MATRIX FONKSİYONU ---
+def manual_confusion_matrix(y_true, y_pred):
+    """Kütüphane kullanmadan TP, TN, FP, FN matrisi oluşturur."""
+    tp = tn = fp = fn = 0
+    for true, pred in zip(y_true, y_pred):
+        if true == 1 and pred == 1: tp += 1
+        elif true == 0 and pred == 0: tn += 1
+        elif true == 0 and pred == 1: fp += 1
+        elif true == 1 and pred == 0: fn += 1
+    # Matris Formu: [[TN, FP], [FN, TP]]
+    return np.array([[tn, fp], [fn, tp]])
+
+# --- SORU 3: MANUEL METRİK FONKSİYONLARI ---
+def calculate_accuracy(cm):
+    tn, fp, fn, tp = cm.ravel()
+    return (tp + tn) / (tp + tn + fp + fn)
+
+def calculate_precision(cm):
+    tn, fp, fn, tp = cm.ravel()
+    return tp / (tp + fp) if (tp + fp) > 0 else 0
+
+def calculate_recall(cm):
+    tn, fp, fn, tp = cm.ravel()
+    return tp / (tp + fn) if (tp + fn) > 0 else 0
+
+# --- SORU 1: LOJİSTİK REGRESYON ---
+lr_model = LogisticRegression()
+lr_model.fit(X_train_scaled, y_train)
+y_pred_lr = lr_model.predict(X_test_scaled)
+y_probs_lr = lr_model.predict_proba(X_test_scaled)[:, 1] # Olasılık skorları
+
+cm_lr = manual_confusion_matrix(y_test, y_pred_lr)
+acc_lr = calculate_accuracy(cm_lr)
+prec_lr = calculate_precision(cm_lr)
+rec_lr = calculate_recall(cm_lr)
+
+# --- SORU 4: KNN ANALİZİ (DENEMELER) ---
+k_values = range(1, 21)
+accuracies = []
+for k in k_values:
+    knn = KNeighborsClassifier(n_neighbors=k)
+    knn.fit(X_train_scaled, y_train)
+    accuracies.append(knn.score(X_test_scaled, y_test))
+
+# En yüksek doğruluğu veren k değerini seçme
+best_k = k_values[np.argmax(accuracies)]
+
+# --- SORU 5: EN İYİ KNN MODELİ VE MANUEL ANALİZ ---
+knn_best = KNeighborsClassifier(n_neighbors=best_k)
+knn_best.fit(X_train_scaled, y_train)
+y_pred_knn = knn_best.predict(X_test_scaled)
+
+cm_knn = manual_confusion_matrix(y_test, y_pred_knn)
+acc_knn = calculate_accuracy(cm_knn)
+prec_knn = calculate_precision(cm_knn)
+rec_knn = calculate_recall(cm_knn)
+
+# --- TERMİNAL ÇIKTILARI ---
+print("\n" + "="*50)
+print("             MODEL PERFORMANS RAPORU")
+print("="*50)
+
+print("\n>>> [SORU 1, 2, 3] LOJİSTİK REGRESYON SONUÇLARI:")
+print(f"Karmaşıklık Matrisi (TN, FP / FN, TP):\n{cm_lr}")
+print(f"Accuracy (Doğruluk):  {acc_lr:.4f}")
+print(f"Precision (Kesinlik): {prec_lr:.4f}")
+print(f"Recall (Duyarlılık):  {rec_lr:.4f}")
+
+print("\n" + "-"*50)
+
+print(f"\n>>> [SORU 4, 5] KNN SONUÇLARI (En İyi k={best_k}):")
+print(f"Karmaşıklık Matrisi (TN, FP / FN, TP):\n{cm_knn}")
+print(f"Accuracy (Doğruluk):  {acc_knn:.4f}")
+print(f"Precision (Kesinlik): {prec_knn:.4f}")
+print(f"Recall (Duyarlılık):  {rec_knn:.4f}")
+print("="*50 + "\n")
+
+# --- GÖRSELLEŞTİRME ---
+print("Grafikler oluşturuluyor...")
+
+# 1. Grafik: KNN Doğruluk Analizi
+plt.figure(figsize=(10, 5))
+plt.plot(k_values, accuracies, marker='o', linestyle='--', color='royalblue')
+plt.title('KNN: K Değerine Göre Doğruluk Analizi')
+plt.xlabel('Komşu Sayısı (K)')
+plt.ylabel('Doğruluk Oranı (Accuracy)')
+plt.xticks(k_values)
+plt.grid(True, alpha=0.3)
+plt.axvline(x=best_k, color='red', linestyle=':', label=f'En İyi K={best_k}')
+plt.legend()
+plt.show()
+
+# 2. Grafik: Karmaşıklık Matrisleri Isı Haritası
+fig, ax = plt.subplots(1, 2, figsize=(14, 5))
+
+sns.heatmap(cm_lr, annot=True, fmt='d', cmap='Blues', ax=ax[0])
+ax[0].set_title('Lojistik Regresyon Karmaşıklık Matrisi')
+ax[0].set_xlabel('Tahmin Edilen'); ax[0].set_ylabel('Gerçek')
+ax[0].set_xticklabels(['Besni', 'Kecimen']); ax[0].set_yticklabels(['Besni', 'Kecimen'])
+
+sns.heatmap(cm_knn, annot=True, fmt='d', cmap='Greens', ax=ax[1])
+ax[1].set_title(f'KNN (k={best_k}) Karmaşıklık Matrisi')
+ax[1].set_xlabel('Tahmin Edilen'); ax[1].set_ylabel('Gerçek')
+ax[1].set_xticklabels(['Besni', 'Kecimen']); ax[1].set_yticklabels(['Besni', 'Kecimen'])
+
+plt.tight_layout()
+plt.show() 

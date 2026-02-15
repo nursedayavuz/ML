@@ -1,0 +1,133 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import roc_curve, auc, precision_recall_curve # Eğri analizleri için
+
+# ---------------------------------------------------------
+# 1. VERİ YÜKLEME VE HAZIRLIK (Bölüm 1)
+# ---------------------------------------------------------
+try:
+    df_c = pd.read_csv('breast-cancer.csv')
+except FileNotFoundError:
+    print("Hata: 'breast-cancer.csv' dosyası bulunamadı.")
+    exit()
+
+# Hedef değişkeni sayısallaştırma (M: 1, B: 0) [cite: 32]
+df_c['diagnosis'] = df_c['diagnosis'].map({'M': 1, 'B': 0})
+X = df_c.drop(['id', 'diagnosis'], axis=1)
+y = df_c['diagnosis']
+
+# Veriyi Eğitim (%60), Doğrulama (%20) ve Test (%20) olarak ayırma 
+X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.20, random_state=42)
+X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.25, random_state=42)
+
+# Ölçeklendirme
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_val_scaled = scaler.transform(X_val)
+X_test_scaled = scaler.transform(X_test)
+
+# ---------------------------------------------------------
+# 2. MANUEL METRİK FONKSİYONU (Bölüm 2 & 4) [cite: 14, 15]
+# ---------------------------------------------------------
+def calculate_manual_metrics(y_true, y_pred):
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    
+    tp = np.sum((y_true == 1) & (y_pred == 1))
+    tn = np.sum((y_true == 0) & (y_pred == 0))
+    fp = np.sum((y_true == 0) & (y_pred == 1))
+    fn = np.sum((y_true == 1) & (y_pred == 0))
+    
+    accuracy = (tp + tn) / len(y_true)
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+    
+    return accuracy, precision, recall
+
+# ---------------------------------------------------------
+# 3. MODELLERİN EĞİTİLMESİ VE ANALİZİ
+# ---------------------------------------------------------
+
+# Lojistik Regresyon
+lr_model = LogisticRegression(max_iter=10000)
+lr_model.fit(X_train_scaled, y_train)
+y_pred_lr = lr_model.predict(X_test_scaled)
+y_probs_lr = lr_model.predict_proba(X_test_scaled)[:, 1] # Olasılık skorları (Soru 7) [cite: 11]
+metrics_lr = calculate_manual_metrics(y_test, y_pred_lr)
+
+# KNN (Doğrulama setiyle en iyi k seçimi) 
+best_k = 1
+best_score = 0
+for k in range(1, 21):
+    knn = KNeighborsClassifier(n_neighbors=k)
+    knn.fit(X_train_scaled, y_train)
+    score = knn.score(X_val_scaled, y_val)
+    if score > best_score:
+        best_score = score
+        best_k = k
+
+knn_final = KNeighborsClassifier(n_neighbors=best_k)
+knn_final.fit(X_train_scaled, y_train)
+y_pred_knn = knn_final.predict(X_test_scaled)
+y_probs_knn = knn_final.predict_proba(X_test_scaled)[:, 1] # Olasılık skorları
+metrics_knn = calculate_manual_metrics(y_test, y_pred_knn)
+
+# ---------------------------------------------------------
+# 4. KARŞILAŞTIRMA TABLOSU (Bölüm 4) [cite: 23, 24]
+# ---------------------------------------------------------
+results = pd.DataFrame({
+    "Metrik": ["Accuracy", "Precision", "Recall"],
+    "Lojistik Regresyon": [round(m, 4) for m in metrics_lr],
+    f"KNN (k={best_k})": [round(m, 4) for m in metrics_knn]
+})
+
+print("\nALGORİTMA KARŞILAŞTIRMA TABLOSU")
+print(results.to_string(index=False))
+
+# ---------------------------------------------------------
+# 5. ROC VE PR EĞRİLERİ (Bölüm 5) 
+# ---------------------------------------------------------
+plt.figure(figsize=(14, 6))
+
+# --- ROC EĞRİSİ (Soru 7) ---
+plt.subplot(1, 2, 1)
+# LR ROC
+fpr_lr, tpr_lr, _ = roc_curve(y_test, y_probs_lr)
+auc_lr = auc(fpr_lr, tpr_lr)
+plt.plot(fpr_lr, tpr_lr, label=f'Lojistik Regresyon (AUC = {auc_lr:.4f})', color='blue')
+
+# KNN ROC
+fpr_knn, tpr_knn, _ = roc_curve(y_test, y_probs_knn)
+auc_knn = auc(fpr_knn, tpr_knn)
+plt.plot(fpr_knn, tpr_knn, label=f'KNN (AUC = {auc_knn:.4f})', color='green')
+
+plt.plot([0, 1], [0, 1], 'k--', alpha=0.5) # Rastgele tahmin çizgisi
+plt.xlabel('False Positive Rate (FPR)') # X ekseni [cite: 28]
+plt.ylabel('True Positive Rate (TPR)')  # Y ekseni [cite: 28]
+plt.title('ROC Eğrisi Karşılaştırması')
+plt.legend()
+plt.grid(alpha=0.3)
+
+# --- PRECISION-RECALL EĞRİSİ (Soru 8) ---
+plt.subplot(1, 2, 2)
+# LR PR
+prec_lr_curve, rec_lr_curve, _ = precision_recall_curve(y_test, y_probs_lr)
+plt.plot(rec_lr_curve, prec_lr_curve, label='Lojistik Regresyon', color='blue')
+
+# KNN PR
+prec_knn_curve, rec_knn_curve, _ = precision_recall_curve(y_test, y_probs_knn)
+plt.plot(rec_knn_curve, prec_knn_curve, label='KNN', color='green')
+
+plt.xlabel('Recall (Duyarlılık)')
+plt.ylabel('Precision (Kesinlik)')
+plt.title('Precision-Recall Eğrisi Karşılaştırması')
+plt.legend()
+plt.grid(alpha=0.3)
+
+plt.tight_layout()
+plt.show() 

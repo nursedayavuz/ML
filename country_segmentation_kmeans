@@ -1,0 +1,95 @@
+# ---------------------------------------------------------
+# GEREKLİ KÜTÜPHANELERİN İÇERİ AKTARILMASI
+# ---------------------------------------------------------
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.manifold import TSNE
+
+# ---------------------------------------------------------
+# GÖREV 2.1 & 2.2: Veri Yükleme ve Ön İşleme
+# ---------------------------------------------------------
+try:
+    df_country = pd.read_csv('Country-data.csv')
+    print("Veri başarıyla yüklendi!")
+except FileNotFoundError:
+    print("HATA: 'Country-data.csv' dosyası bulunamadı. Lütfen dosya yolunu kontrol et.")
+    exit()
+
+# Ülke isimlerini etiket olarak saklayıp, eğitim verisinden çıkaralım
+country_names = df_country['country']
+df_country_data = df_country.drop('country', axis=1)
+
+# Ölçeklendirme
+scaler_country = StandardScaler()
+df_country_scaled = scaler_country.fit_transform(df_country_data)
+
+# ---------------------------------------------------------
+# GÖREV 2.3: Optimal Küme Sayısı (Elbow Method)
+# ---------------------------------------------------------
+print("\nElbow Yöntemi hesaplanıyor...")
+inertia_c = []
+for k in range(1, 11):
+    kmeans_c = KMeans(n_clusters=k, random_state=42)
+    kmeans_c.fit(df_country_scaled)
+    inertia_c.append(kmeans_c.inertia_)
+
+plt.figure(figsize=(8, 5))
+plt.plot(range(1, 11), inertia_c, 'bo-')
+plt.xlabel('Küme Sayısı (k)')
+plt.ylabel('Inertia')
+plt.title('Ülkeler Verisi için Elbow Yöntemi')
+plt.show()
+
+# Bu veri seti için genellikle 3 küme (Gelişmemiş, Gelişmekte, Gelişmiş) idealdir.
+selected_k_country = 3 
+print(f"Seçilen Küme Sayısı: {selected_k_country}")
+
+# ---------------------------------------------------------
+# Model Eğitimi
+# ---------------------------------------------------------
+kmeans_country = KMeans(n_clusters=selected_k_country, random_state=42)
+country_clusters = kmeans_country.fit_predict(df_country_scaled)
+
+# Sonuçları DataFrame'e ekle
+df_country['Cluster'] = country_clusters
+
+# ---------------------------------------------------------
+# GÖREV 2.4: Görselleştirme (t-SNE)
+# ---------------------------------------------------------
+print("t-SNE grafiği oluşturuluyor (biraz zaman alabilir)...")
+
+# DÜZELTME BURADA YAPILDI: 'n_iter' parametresi kaldırıldı.
+# Varsayılan iterasyon sayısı kullanılacak.
+tsne = TSNE(n_components=2, verbose=0, perplexity=40, random_state=42)
+tsne_results = tsne.fit_transform(df_country_scaled)
+
+df_tsne = pd.DataFrame(data=tsne_results, columns=['Dim1', 'Dim2'])
+df_tsne['Cluster'] = country_clusters
+df_tsne['Country'] = country_names
+
+# t-SNE Grafiği
+plt.figure(figsize=(12, 8))
+sns.scatterplot(x='Dim1', y='Dim2', hue='Cluster', data=df_tsne, palette='Set1', s=100)
+
+# Bazı ülke isimlerini grafiğe yazdırma
+for i in range(df_tsne.shape[0]):
+    # Grafik çok karışmasın diye sadece belirli aralıklarla isim yazdırıyoruz
+    if i % 5 == 0: 
+        plt.text(df_tsne.Dim1[i]+0.2, df_tsne.Dim2[i]+0.2, df_tsne.Country[i], fontsize=9)
+
+plt.title('Ülke Kümeleri (t-SNE)')
+plt.show()
+
+# ---------------------------------------------------------
+# GÖREV 2.5: Sonuç Yorumlaması (Tablo Analizi)
+# ---------------------------------------------------------
+# Kümelere göre ortalama değerler
+cluster_means = df_country.groupby('Cluster')[['child_mort', 'income', 'gdpp', 'life_expec']].mean()
+print("\nÜlke Kümelerinin Ortalamaları:")
+print(cluster_means)
+
+print("\nAnaliz Tamamlandı.")

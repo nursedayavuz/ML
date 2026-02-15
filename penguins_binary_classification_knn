@@ -1,0 +1,112 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import accuracy_score, roc_curve, auc, precision_recall_curve
+
+# 1. Veri Setinin Yüklenmesi
+df = pd.read_csv('penguins_binary_classification.csv')
+
+# 2. Ön İşleme
+le_island = LabelEncoder()
+df['island_encoded'] = le_island.fit_transform(df['island'])
+le_species = LabelEncoder()
+df['species_encoded'] = le_species.fit_transform(df['species'])
+
+X = df[['island_encoded', 'bill_length_mm', 'bill_depth_mm', 'flipper_length_mm', 'body_mass_g', 'year']]
+y = df['species_encoded']
+
+# Veriyi ayırma
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Ölçeklendirme (KNN için kritik önemdedir)
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# ---------------------------------------------------------
+# Soru 4: KNN Modeli Eğitimi ve K-Analizi
+# ---------------------------------------------------------
+k_values = range(1, 21)
+accuracies = []
+
+for k in k_values:
+    knn = KNeighborsClassifier(n_neighbors=k)
+    knn.fit(X_train_scaled, y_train)
+    y_pred = knn.predict(X_test_scaled)
+    accuracies.append(accuracy_score(y_test, y_pred))
+
+best_k = k_values[np.argmax(accuracies)]
+
+# ---------------------------------------------------------
+# Soru 5: Manuel Analiz Fonksiyonu
+# ---------------------------------------------------------
+def manual_metrics(y_true, y_pred):
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    tp = np.sum((y_true == 1) & (y_pred == 1))
+    tn = np.sum((y_true == 0) & (y_pred == 0))
+    fp = np.sum((y_true == 0) & (y_pred == 1))
+    fn = np.sum((y_true == 1) & (y_pred == 0))
+    
+    accuracy = (tp + tn) / (tp + tn + fp + fn)
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+    return accuracy, precision, recall
+
+# En iyi k ile final modelini kurma
+knn_best = KNeighborsClassifier(n_neighbors=best_k)
+knn_best.fit(X_train_scaled, y_train)
+
+# Tahminler ve Olasılık Skorları (Eğriler için gerekli)
+y_pred_best = knn_best.predict(X_test_scaled)
+y_probs_best = knn_best.predict_proba(X_test_scaled)[:, 1]
+
+acc_m, prec_m, rec_m = manual_metrics(y_test, y_pred_best)
+
+print(f"\n--- Seçilen En İyi k: {best_k} ---")
+print(f"Manuel Accuracy  : {acc_m:.4f}")
+print(f"Manuel Precision : {prec_m:.4f}")
+print(f"Manuel Recall    : {rec_m:.4f}")
+
+# ---------------------------------------------------------
+# Bölüm 5: Görselleştirme (Analiz, ROC ve PR)
+# ---------------------------------------------------------
+
+# Grafik Alanını Hazırlama
+plt.figure(figsize=(18, 5))
+
+# 1. Grafik: K-Değeri Analizi
+plt.subplot(1, 3, 1)
+plt.plot(k_values, accuracies, marker='o', linestyle='--', color='b')
+plt.axvline(x=best_k, color='r', linestyle=':', label=f'En İyi K={best_k}')
+plt.title('K Değerine Göre Accuracy')
+plt.xlabel('K Değeri'); plt.ylabel('Doğruluk')
+plt.legend(); plt.grid(True)
+
+# 2. Grafik: ROC Eğrisi (Soru 7)
+plt.subplot(1, 3, 2)
+fpr, tpr, _ = roc_curve(y_test, y_probs_best)
+roc_auc = auc(fpr, tpr)
+plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC Eğrisi (AUC = {roc_auc:.2f})')
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+plt.title('KNN - ROC Eğrisi')
+plt.xlabel('False Positive Rate (FPR)')
+plt.ylabel('True Positive Rate (TPR)')
+plt.legend(loc="lower right")
+plt.grid(alpha=0.3)
+
+# 3. Grafik: Precision-Recall Eğrisi (Soru 8)
+plt.subplot(1, 3, 3)
+precision, recall, _ = precision_recall_curve(y_test, y_probs_best)
+plt.plot(recall, precision, color='green', lw=2, label='PR Eğrisi')
+plt.title('KNN - Precision-Recall Eğrisi')
+plt.xlabel('Recall (Duyarlılık)')
+plt.ylabel('Precision (Kesinlik)')
+plt.legend(loc="lower left")
+plt.grid(alpha=0.3)
+
+plt.tight_layout()
+plt.show() 
